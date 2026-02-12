@@ -6,9 +6,6 @@ import { generateAnimalImages } from './services/geminiService.ts';
 import Button from './components/Button.tsx';
 import Icon from './components/Icon.tsx';
 
-// Removed the manual global declaration for 'aistudio' to avoid type conflicts
-// with the pre-configured 'AIStudio' type provided by the environment.
-
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('landing');
   const [hasKey, setHasKey] = useState<boolean | null>(null);
@@ -25,10 +22,9 @@ const App: React.FC = () => {
 
   const timerRef = useRef<number | null>(null);
 
-  // Comprobar si hay una API Key seleccionada al inicio
   useEffect(() => {
     const checkKey = async () => {
-      // @ts-ignore - aistudio is globally defined in the environment
+      // @ts-ignore
       const selected = await window.aistudio.hasSelectedApiKey();
       setHasKey(selected);
     };
@@ -36,9 +32,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleSelectKey = async () => {
-    // @ts-ignore - aistudio is globally defined in the environment
+    // @ts-ignore
     await window.aistudio.openSelectKey();
-    setHasKey(true); // Asumimos éxito según guías para evitar race conditions
+    setHasKey(true);
   };
 
   const startLevel = useCallback(async (index: number) => {
@@ -63,10 +59,17 @@ const App: React.FC = () => {
         animalUrl: urls.living,
       }));
     } catch (err: any) {
+      let errorMsg = "¡Ay! El equipo ha fallado. ¿Reintentamos?";
+      if (err.message === "PERMISSION_DENIED") {
+        errorMsg = "PERMISSION_DENIED";
+      } else if (err.message === "RATE_LIMIT") {
+        errorMsg = "¡Vaya! La clínica está llena. Doctor/a, necesitamos una pausa de un minuto.";
+      }
+      
       setGameState(prev => ({
         ...prev,
         loading: false,
-        error: err.message || "¡Ay! El estetoscopio no funciona. ¿Lo intentamos de nuevo?"
+        error: errorMsg
       }));
     }
   }, []);
@@ -121,9 +124,9 @@ const App: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center p-6 bg-[#F0FDFA]">
         <div className="max-w-md w-full text-center space-y-8 bg-white p-12 bubbly-card border-[12px] border-sky-100">
           <Icon name="stethoscope" className="w-24 h-24 mx-auto animate-soft" />
-          <h2 className="text-4xl font-black text-emerald-500">Configuración de la Clínica</h2>
+          <h2 className="text-4xl font-black text-emerald-500">Configuración Médica</h2>
           <p className="text-xl text-slate-600 font-medium">
-            Para ver los Rayos X de alta calidad, necesitamos conectar tu equipo médico.
+            Para ver los Rayos X de alta calidad (Gemini Pro), selecciona una clave de un proyecto con facturación habilitada.
           </p>
           <div className="space-y-4">
             <Button size="lg" variant="primary" onClick={handleSelectKey} className="w-full rounded-full">
@@ -135,7 +138,7 @@ const App: React.FC = () => {
               rel="noopener noreferrer"
               className="block text-sky-500 font-bold hover:underline text-sm"
             >
-              Ver instrucciones de facturación ℹ️
+              Guía de Facturación ℹ️
             </a>
           </div>
         </div>
@@ -177,10 +180,6 @@ const App: React.FC = () => {
               ¡PASAR A CONSULTA! 🐾
             </Button>
           </div>
-
-          <p className="text-slate-300 font-bold tracking-widest uppercase text-xl">
-            ¡15 PACIENTES ESPERAN REVISIÓN!
-          </p>
         </div>
       </div>
     );
@@ -207,7 +206,7 @@ const App: React.FC = () => {
             setGameState(prev => ({ ...prev, currentIndex: 0, score: 0 }));
             setView('landing');
           }} className="rounded-full">
-            ¡NUEVA REVISIÓN! 🏠
+            ¡OTRA VEZ! 🏠
           </Button>
         </div>
       </div>
@@ -245,16 +244,28 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-2">
               <p className="text-4xl font-black text-emerald-400 animate-pulse">PREPARANDO RAYOS X... 📸</p>
-              <p className="text-lg text-slate-400 font-bold uppercase tracking-wider">Esto puede tardar unos segundos</p>
             </div>
           </div>
         ) : gameState.error ? (
           <div className="text-center space-y-8 max-w-md">
             <Icon name="alert" className="w-32 h-32 mx-auto" />
-            <p className="text-3xl font-black text-slate-700 leading-tight">{gameState.error}</p>
-            <Button size="lg" variant="danger" onClick={() => startLevel(gameState.currentIndex)} className="rounded-full">
-              REINTENTAR 🔄
-            </Button>
+            <div className="space-y-4">
+              <p className="text-3xl font-black text-slate-700 leading-tight">
+                {gameState.error === "PERMISSION_DENIED" 
+                  ? "¡Acceso Denegado! La clave seleccionada no permite usar Gemini Pro." 
+                  : gameState.error}
+              </p>
+              <div className="flex flex-col gap-4">
+                <Button size="lg" variant="primary" onClick={() => startLevel(gameState.currentIndex)} className="rounded-full">
+                  REINTENTAR 🔄
+                </Button>
+                {gameState.error === "PERMISSION_DENIED" && (
+                  <Button size="lg" variant="yellow" onClick={handleSelectKey} className="rounded-full">
+                    CAMBIAR EQUIPO 🔌
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="w-full h-full relative flex flex-col items-center justify-center">

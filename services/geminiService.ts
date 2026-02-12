@@ -16,9 +16,14 @@ async function fetchWithRetry(fn: () => Promise<any>, maxRetries = 5, initialDel
       const errorMsg = error?.message || "";
       const isRateLimit = errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED');
       const isServerError = error?.status >= 500;
+      const isPermissionDenied = errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED');
+
+      // Si es un error de permisos, no reintentamos automáticamente, lanzamos el error para manejarlo en la UI
+      if (isPermissionDenied) {
+        throw new Error("PERMISSION_DENIED");
+      }
 
       if (isRateLimit || isServerError) {
-        // Exponencial backoff: 3s, 6s, 12s, 24s...
         const delay = initialDelay * Math.pow(2, i);
         console.warn(`Reintento ${i + 1}/${maxRetries} tras ${delay}ms por error: ${errorMsg}`);
         await sleep(delay);
@@ -36,11 +41,10 @@ export async function generateAnimalImages(animalName: string): Promise<{ skelet
 
   const commonConstraint = "Exact side profile view, full body centered, neutral standing pose, isolated on pure white background, ultra high detail, professional biological illustration style.";
   
-  const skeletonPrompt = `A scientific osteology drawing of a complete ${animalName.toLowerCase()} skeleton. Pure white bones, no background, high contrast. ${commonConstraint}`;
-  const livingPrompt = `A high-quality realistic photo of a living ${animalName.toLowerCase()} in the exact same pose as the skeleton. White background. ${commonConstraint}`;
+  const skeletonPrompt = `A scientific drawing of a complete ${animalName.toLowerCase()} skeleton. Pure white bones, no background. ${commonConstraint}`;
+  const livingPrompt = `A realistic photo of a living ${animalName.toLowerCase()} in the exact same pose as the skeleton. White background. ${commonConstraint}`;
 
   try {
-    // Generar esqueleto
     const skeletonRes = await fetchWithRetry(() => 
       ai.models.generateContent({
         model: MODEL_NAME,
@@ -51,9 +55,8 @@ export async function generateAnimalImages(animalName: string): Promise<{ skelet
       })
     );
 
-    await sleep(1000); // Pausa para evitar ráfagas de cuota
+    await sleep(800);
 
-    // Generar animal vivo
     const livingRes = await fetchWithRetry(() => 
       ai.models.generateContent({
         model: MODEL_NAME,
@@ -63,9 +66,6 @@ export async function generateAnimalImages(animalName: string): Promise<{ skelet
         }
       })
     );
-
-    let skeletonUrl = "";
-    let livingUrl = "";
 
     const extractUrl = (response: any) => {
       if (response.candidates?.[0]?.content?.parts) {
@@ -78,18 +78,21 @@ export async function generateAnimalImages(animalName: string): Promise<{ skelet
       return "";
     };
 
-    skeletonUrl = extractUrl(skeletonRes);
-    livingUrl = extractUrl(livingRes);
+    const skeletonUrl = extractUrl(skeletonRes);
+    const livingUrl = extractUrl(livingRes);
 
     if (!skeletonUrl || !livingUrl) {
-      throw new Error("No se pudieron generar las imágenes. Por favor, intenta con otro animal.");
+      throw new Error("No se pudieron generar las imágenes.");
     }
 
     return { skeleton: skeletonUrl, living: livingUrl };
   } catch (error: any) {
+    if (error.message === "PERMISSION_DENIED") {
+      throw new Error("PERMISSION_DENIED");
+    }
     console.error("Gemini API Error:", error);
     if (error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
-      throw new Error("¡Vaya! La clínica está llena. Doctor/a, necesitamos una pausa de un minuto antes de seguir.");
+      throw new Error("RATE_LIMIT");
     }
     throw error;
   }
