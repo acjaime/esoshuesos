@@ -1,12 +1,12 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Usamos el modelo Pro para mayor calidad y para permitir el flujo de selección de API Key
-const MODEL_NAME = 'gemini-3-pro-image-preview';
+// Usamos el modelo Flash para generación de imágenes (rápido y con cuota gratuita disponible)
+const MODEL_NAME = 'gemini-2.5-flash-image';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fetchWithRetry(fn: () => Promise<any>, maxRetries = 5, initialDelay = 3000) {
+async function fetchWithRetry(fn: () => Promise<any>, maxRetries = 3, initialDelay = 2000) {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -16,12 +16,6 @@ async function fetchWithRetry(fn: () => Promise<any>, maxRetries = 5, initialDel
       const errorMsg = error?.message || "";
       const isRateLimit = errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED');
       const isServerError = error?.status >= 500;
-      const isPermissionDenied = errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED');
-
-      // Si es un error de permisos, no reintentamos automáticamente, lanzamos el error para manejarlo en la UI
-      if (isPermissionDenied) {
-        throw new Error("PERMISSION_DENIED");
-      }
 
       if (isRateLimit || isServerError) {
         const delay = initialDelay * Math.pow(2, i);
@@ -36,33 +30,36 @@ async function fetchWithRetry(fn: () => Promise<any>, maxRetries = 5, initialDel
 }
 
 export async function generateAnimalImages(animalName: string): Promise<{ skeleton: string; living: string }> {
-  // Siempre instanciamos GoogleGenAI justo antes de la llamada para obtener la clave más reciente
+  // Inicialización con la clave del entorno
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  const commonConstraint = "Exact side profile view, full body centered, neutral standing pose, isolated on pure white background, ultra high detail, professional biological illustration style.";
+  const commonConstraint = "Exact side profile view, full body centered, neutral standing pose, isolated on pure white background, biological illustration style.";
   
-  const skeletonPrompt = `A scientific drawing of a complete ${animalName.toLowerCase()} skeleton. Pure white bones, no background. ${commonConstraint}`;
-  const livingPrompt = `A realistic photo of a living ${animalName.toLowerCase()} in the exact same pose as the skeleton. White background. ${commonConstraint}`;
+  const skeletonPrompt = `A scientific anatomical drawing of a complete ${animalName.toLowerCase()} skeleton. Only white bones, plain white background, very clear lines. ${commonConstraint}`;
+  const livingPrompt = `A realistic photo of a living ${animalName.toLowerCase()} in the exact same side profile pose. Plain white background. ${commonConstraint}`;
 
   try {
+    // Generación del esqueleto
     const skeletonRes = await fetchWithRetry(() => 
       ai.models.generateContent({
         model: MODEL_NAME,
         contents: { parts: [{ text: skeletonPrompt }] },
         config: {
-          imageConfig: { aspectRatio: "1:1", imageSize: "1K" }
+          imageConfig: { aspectRatio: "1:1" }
         }
       })
     );
 
-    await sleep(800);
+    // Pequeña pausa para no saturar la cuota gratuita
+    await sleep(500);
 
+    // Generación del animal vivo
     const livingRes = await fetchWithRetry(() => 
       ai.models.generateContent({
         model: MODEL_NAME,
         contents: { parts: [{ text: livingPrompt }] },
         config: {
-          imageConfig: { aspectRatio: "1:1", imageSize: "1K" }
+          imageConfig: { aspectRatio: "1:1" }
         }
       })
     );
@@ -87,13 +84,11 @@ export async function generateAnimalImages(animalName: string): Promise<{ skelet
 
     return { skeleton: skeletonUrl, living: livingUrl };
   } catch (error: any) {
-    if (error.message === "PERMISSION_DENIED") {
-      throw new Error("PERMISSION_DENIED");
-    }
     console.error("Gemini API Error:", error);
-    if (error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
-      throw new Error("RATE_LIMIT");
+    const errorMsg = error?.message || "";
+    if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+      throw new Error("¡Vaya! Demasiados pacientes. Espera un momento, doctor/a.");
     }
-    throw error;
+    throw new Error("¡Ay! El equipo ha fallado. ¿Reintentamos la prueba?");
   }
 }

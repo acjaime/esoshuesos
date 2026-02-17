@@ -8,7 +8,6 @@ import Icon from './components/Icon.tsx';
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('landing');
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [gameState, setGameState] = useState<GameState>({
     currentIndex: 0,
     isRevealed: false,
@@ -21,21 +20,6 @@ const App: React.FC = () => {
   });
 
   const timerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const checkKey = async () => {
-      // @ts-ignore
-      const selected = await window.aistudio.hasSelectedApiKey();
-      setHasKey(selected);
-    };
-    checkKey();
-  }, []);
-
-  const handleSelectKey = async () => {
-    // @ts-ignore
-    await window.aistudio.openSelectKey();
-    setHasKey(true);
-  };
 
   const startLevel = useCallback(async (index: number) => {
     setGameState(prev => ({
@@ -59,17 +43,10 @@ const App: React.FC = () => {
         animalUrl: urls.living,
       }));
     } catch (err: any) {
-      let errorMsg = "¡Ay! El equipo ha fallado. ¿Reintentamos?";
-      if (err.message === "PERMISSION_DENIED") {
-        errorMsg = "PERMISSION_DENIED";
-      } else if (err.message === "RATE_LIMIT") {
-        errorMsg = "¡Vaya! La clínica está llena. Doctor/a, necesitamos una pausa de un minuto.";
-      }
-      
       setGameState(prev => ({
         ...prev,
         loading: false,
-        error: errorMsg
+        error: err.message || "¡Uy! Hubo un problema con los Rayos X."
       }));
     }
   }, []);
@@ -119,33 +96,6 @@ const App: React.FC = () => {
 
   const currentAnimal = ANIMALS_LIST[gameState.currentIndex];
 
-  if (hasKey === false) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-[#F0FDFA]">
-        <div className="max-w-md w-full text-center space-y-8 bg-white p-12 bubbly-card border-[12px] border-sky-100">
-          <Icon name="stethoscope" className="w-24 h-24 mx-auto animate-soft" />
-          <h2 className="text-4xl font-black text-emerald-500">Configuración Médica</h2>
-          <p className="text-xl text-slate-600 font-medium">
-            Para ver los Rayos X de alta calidad (Gemini Pro), selecciona una clave de un proyecto con facturación habilitada.
-          </p>
-          <div className="space-y-4">
-            <Button size="lg" variant="primary" onClick={handleSelectKey} className="w-full rounded-full">
-              CONECTAR EQUIPO 🔌
-            </Button>
-            <a 
-              href="https://ai.google.dev/gemini-api/docs/billing" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="block text-sky-500 font-bold hover:underline text-sm"
-            >
-              Guía de Facturación ℹ️
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (view === 'landing') {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-[#F0FDFA]">
@@ -191,9 +141,6 @@ const App: React.FC = () => {
         <div className="max-w-2xl w-full text-center bg-white p-16 rounded-[4rem] shadow-2xl space-y-10 border-[12px] border-emerald-100">
           <div className="relative inline-block">
             <Icon name="trophy" className="w-40 h-40 mx-auto animate-bounce" />
-            <div className="absolute -top-4 -right-4 animate-pulse">
-              <Icon name="heart" className="w-16 h-16" />
-            </div>
           </div>
           <h2 className="text-6xl font-black text-slate-900 leading-tight">¡DOCTOR/A,<br/>ERES GENIAL!</h2>
           <div className="space-y-2">
@@ -238,38 +185,19 @@ const App: React.FC = () => {
           <div className="text-center space-y-8">
             <div className="relative inline-block">
               <Icon name="loader" className="w-32 h-32 text-emerald-300 animate-spin mx-auto" />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                 <Icon name="stethoscope" className="w-16 h-16" />
-              </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-4xl font-black text-emerald-400 animate-pulse">PREPARANDO RAYOS X... 📸</p>
-            </div>
+            <p className="text-4xl font-black text-emerald-400 animate-pulse uppercase">Cargando Rayos X... 📸</p>
           </div>
         ) : gameState.error ? (
           <div className="text-center space-y-8 max-w-md">
             <Icon name="alert" className="w-32 h-32 mx-auto" />
-            <div className="space-y-4">
-              <p className="text-3xl font-black text-slate-700 leading-tight">
-                {gameState.error === "PERMISSION_DENIED" 
-                  ? "¡Acceso Denegado! La clave seleccionada no permite usar Gemini Pro." 
-                  : gameState.error}
-              </p>
-              <div className="flex flex-col gap-4">
-                <Button size="lg" variant="primary" onClick={() => startLevel(gameState.currentIndex)} className="rounded-full">
-                  REINTENTAR 🔄
-                </Button>
-                {gameState.error === "PERMISSION_DENIED" && (
-                  <Button size="lg" variant="yellow" onClick={handleSelectKey} className="rounded-full">
-                    CAMBIAR EQUIPO 🔌
-                  </Button>
-                )}
-              </div>
-            </div>
+            <p className="text-3xl font-black text-slate-700 leading-tight">{gameState.error}</p>
+            <Button size="lg" variant="primary" onClick={() => startLevel(gameState.currentIndex)} className="rounded-full">
+              REINTENTAR 🔄
+            </Button>
           </div>
         ) : (
           <div className="w-full h-full relative flex flex-col items-center justify-center">
-            {/* Clinical Images */}
             <div className="relative w-full h-full flex items-center justify-center flex-1">
               {gameState.skeletonUrl && (
                 <img 
@@ -287,7 +215,6 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* Hint from the Doctor */}
             {gameState.timeLeft <= HINT_THRESHOLD && !gameState.isRevealed && (
               <div className="absolute top-0 bg-sky-50 border-4 border-sky-100 text-sky-700 px-8 py-5 rounded-[3rem] shadow-xl flex items-center gap-4 animate-soft max-w-xl text-center">
                 <Icon name="info" className="w-12 h-12 shrink-0" />
@@ -295,7 +222,6 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Diagnosis Result */}
             {gameState.isRevealed && (
               <div className="mt-8 bg-emerald-500 text-white px-12 py-6 rounded-full text-5xl font-black shadow-2xl animate-bounce border-b-[12px] border-emerald-700">
                 ¡ES UN {currentAnimal.name}! ✨
